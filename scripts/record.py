@@ -16,7 +16,7 @@ NS = '/autodrive/roboracer_1'
 duration, out = float(sys.argv[1]), sys.argv[2]
 rclpy.init()
 node = rclpy.create_node('recorder')
-rows, meta, cur = [], {}, dict(vx=0.0, vy=0.0, wz=0.0, thr=0.0, steer=0.0, col=0, lap=0)
+rows, meta, cur = [], {}, dict(vx=0.0, vy=0.0, wz=0.0, thr=0.0, steer=0.0, col=0, lap=0, x=0.0, y=0.0, yaw=0.0)
 
 
 def on_scan(m):

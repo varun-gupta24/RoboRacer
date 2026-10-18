@@ -33,6 +33,7 @@ PARAMS = {
     'lookahead': (0.6, 'projection distance L [m]'),
     'lookahead_per_mps': (0.2, 'extra L per m/s of speed'),
     'open_dist': (2.5, 'side beam longer than this => wall missing, use the other side'),
+    'open_pull': (0.3, 'one-wall mode: gain on pulling toward the wall (pushing away stays at 1)'),
     'half_width_init': (0.75, 'initial guess of half track width [m]'),
     'half_width_alpha': (0.02, 'EMA rate for the half-width estimate'),
     # steering PD
@@ -44,7 +45,9 @@ PARAMS = {
     'front_alpha': (0.4, 'EMA rate for front clearance used by the speed schedule'),
     'v_min': (1.0, 'speed floor [m/s]'),
     'v_max': (4.0, 'speed ceiling [m/s]'),
-    'v_per_m_front': (1.3, 'target speed per m of front clearance'),
+    'brake_accel': (3.0, 'deceleration budget [m/s^2]: v_target = sqrt(2*a*(front - brake_dist - v*react_time))'),
+    'react_time': (0.1, 'latency allowance [s]; the distance covered in it is not available for braking'),
+    'speed_lead': (0.25, 'seconds of speed prediction (v + accel*lead) fed to the throttle loop'),
     'steer_slowdown': (0.5, 'v_target *= 1 - steer_slowdown*|steer_cmd|'),
     'throttle_ff': (0.1, 'feed-forward throttle per m/s of target speed'),
     'throttle_kp': (0.8, 'throttle per m/s of speed error'),
@@ -77,7 +80,7 @@ def wall(b, a, alpha, lookahead):
 
 
 def new_state(p):
-    return SimpleNamespace(half_width=p.half_width_init, err_hist=deque(), front_f=None)
+    return SimpleNamespace(half_width=p.half_width_init, err_hist=deque(), front_f=None, v_hist=deque())
 
 
 def control(r, angle_min, angle_increment, speed, p, st, now):
@@ -96,7 +99,7 @@ def control(r, angle_min, angle_increment, speed, p, st, now):
         return float(np.min(r[index(lo_deg):index(hi_deg) + 1]))
 
     alpha = math.radians(p.alpha_deg)
-    L = p.lookahead + p.lookahead_per_mps * speed
+    L = p.lookahead + p.lookahead_per_mps * max(0.0, speed)
     b_l = sample(p.side_angle_deg)
     a_l = sample(p.side_angle_deg - p.alpha_deg)
     b_r = sample(-p.side_angle_deg)
@@ -109,10 +112,12 @@ def control(r, angle_min, angle_increment, speed, p, st, now):
     if left_ok and right_ok:
         err = dl_l - dl_r  # >0: too far right -> steer left
         st.half_width += p.half_width_alpha * ((d_l + d_r) / 2 - st.half_width)
-    elif right_ok:
-        err = st.half_width - dl_r
+    elif right_ok:  # inner wall gone at a corner exit: the remaining wall is usually ahead, so
+        e = st.half_width - dl_r  # push away from it at full gain, pull toward it only weakly
+        err = e if e > 0 else p.open_pull * e
     elif left_ok:
-        err = dl_l - st.half_width
+        e = dl_l - st.half_width
+        err = e if e < 0 else p.open_pull * e
     else:
         err = 0.0  # ponytail: nothing to follow, hold straight; a gap-follower would go here
 
@@ -137,9 +142,18 @@ def control(r, angle_min, angle_increment, speed, p, st, now):
     # speed: front clearance in a cone, scaled down by steering, closed loop on odom speed
     front = cone(-p.front_cone_deg, p.front_cone_deg)
     st.front_f = front if st.front_f is None else st.front_f + p.front_alpha * (front - st.front_f)
-    v_target = clip(st.front_f * p.v_per_m_front, p.v_min, p.v_max) * (1.0 - p.steer_slowdown * abs(steer_cmd))
-    throttle = clip(p.throttle_ff * v_target + p.throttle_kp * (v_target - speed), -1.0, 1.0)
-    if front < p.brake_dist:
+    stop_dist = max(0.0, st.front_f - p.brake_dist - p.react_time * speed)
+    v_target = clip(math.sqrt(2.0 * p.brake_accel * stop_dist), p.v_min, p.v_max)
+    v_target *= 1.0 - p.steer_slowdown * abs(steer_cmd)
+    # predict the speed a little ahead (the drivetrain and bridge add ~0.1-0.2 s of lag)
+    st.v_hist.append((now, speed))
+    while len(st.v_hist) > 2 and now - st.v_hist[1][0] >= 0.2:
+        st.v_hist.popleft()
+    t_old, v_old = st.v_hist[0]
+    accel = (speed - v_old) / (now - t_old) if now - t_old >= 0.1 else 0.0
+    v_pred = speed + p.speed_lead * accel
+    throttle = clip(p.throttle_ff * v_target + p.throttle_kp * (v_target - v_pred), -1.0, 1.0)
+    if front < p.brake_dist:  # brake, but never push backwards (speed is signed)
         throttle = p.brake_throttle if speed > 0.3 else 0.0
     dbg = dict(err=err, p_term=p.kp * err, d_term=p.kd * d_err, corner=corner, dl_l=dl_l, dl_r=dl_r,
                d_l=d_l, d_r=d_r, mode=mode, front=front, v_target=v_target, near_l=near_l, near_r=near_r)
@@ -188,8 +202,7 @@ class WallFollowNode(Node):
         return SetParametersResult(successful=True)
 
     def on_odom(self, msg):
-        v = msg.twist.twist.linear
-        self.speed = math.hypot(v.x, v.y)
+        self.speed = msg.twist.twist.linear.x  # body frame: signed forward speed
 
     def on_collision(self, msg):
         if msg.data > self.collisions:
@@ -227,7 +240,7 @@ class WallFollowNode(Node):
         steer_cmd, throttle, front, _ = control(r, msg.angle_min, msg.angle_increment, self.speed, p, self.st, now)
 
         # stall recovery: stopped against a wall -> back up with the wheel turned the other way
-        stalled = front < p.brake_dist and self.speed < 0.1
+        stalled = front < p.brake_dist and abs(self.speed) < 0.1
         if stalled and self.stall_since is None:
             self.stall_since = now
         elif not stalled:

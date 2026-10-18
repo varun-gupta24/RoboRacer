@@ -31,7 +31,24 @@ recording. The S-bend is where every fast run eventually touches.
    car's swept width) was tried and reverted: in a bend the outer wall sits inside the band and
    the car braked and jerked through every corner.
 6. **Reset artefact.** Resetting while the car is moving sometimes registers one collision in the
-   first 2 s. Start the node with the car at rest.
+   first 2 s. Start the node with the car at rest. The reset teleports the car to the start line
+   on the right straight heading south about 1.5 s after the command and zeroes the counters.
+7. **Speed law shape.** `v = k·d` demands deceleration `k²·d`, which at `k = 1.3` is 5 m/s² at
+   3 m of clearance — the car's whole braking capability (measured: throttle −1 gives about
+   −5 m/s², +1 about +5 m/s², coasting −0.9 m/s²). A constant-deceleration law
+   `v = sqrt(2·a·(d − d0 − v·τ))` with `a = 3`, `τ = 0.1 s` is faster far from walls and safer near
+   them: 12–13 s laps instead of 14–15 s, fewer hits. `τ = 0.25` cost 2 s per lap for no gain.
+8. **One-wall fallback pulled the car into corner-exit walls.** When the inner wall ends at a
+   corner exit the controller drops to one-wall mode, and "follow the remaining wall at half
+   width" steers toward the outer wall that is directly ahead. Now it pushes away at full gain
+   and pulls toward at 0.3×.
+9. **Reverse runaway (real bug).** Speed was `hypot(vx, vy)`; after a near-stop at an apex the
+   brake branch (`front < 0.5 m and speed > 0.3`) kept commanding −0.3 while the car was
+   accelerating *backwards*, until it hit something behind. Odometry twist is body-frame, so the
+   signed `vx` is used now and reversing only happens through the 1 s stall-recovery branch.
+10. **Scan gaps remain the limiting factor.** Even in GUI mode ~50 gaps of 0.15–0.35 s per
+    150 s; the bridge is a single Python thread at ~110 % CPU decoding the camera image for every
+    frame. The latency allowance in the speed law is what covers these.
 
 ## Trials (from `scripts/trials.csv`)
 
@@ -44,7 +61,14 @@ recording. The S-bend is where every fast run eventually touches.
 | v_max 4 v_per_m_front 1.2 throttle_kp 0.4 | 120 s | 7 | 12.9 | 14.8 | 2 |
 | v_max 4.5 v_per_m_front 1.3 throttle_kp 0.4 steer_slowdown 0.6 | 120 s | 7 | 13.0 | 14.1 | 3 |
 | v_max 3.5 v_per_m_front 1.3 throttle_kp 0.8 cone ±10° | 130 s | 8 | 13.8 | 14.4 | 1 (t=9 s) |
-| **v_max 4 v_per_m_front 1.3 throttle_kp 0.8 cone ±15° (defaults)** | 130 s | 7 | 14.4 | 15.5 | 0 |
+| v_max 4 v_per_m_front 1.3 throttle_kp 0.8 cone ±15° | 130 s | 7 | 14.4 | 15.5 | 0 |
+| same, 200 s validation | 200 s | 12 | 13.6 | 15.0 | 1 |
+| sqrt law brake_accel 3 (+ speed prediction) | 2 × 130 s | 8 + 9 | 11.7 | 12.4 | 1 (first lap) |
+| + open_pull 0.3 | 2 × 130 s | 5 + 8 | 12.4 | 13.1 | 4 |
+| + react_time 0.25 | 2 × 150 s | 8 + 8 | 14.8 | 16.2 | 1 |
+| + signed speed, react_time 0.1 | 150 s | 9 | 12.8 | 13.9 | 0 |
+| + signed speed, react_time 0.25 | 150 s | 8 | 14.5 | 15.7 | 1 |
+| **defaults (signed speed, sqrt law a=3, react 0.1, open_pull 0.3)** | 300 s | 21 | 12.5 | 13.5 | 1 (lap 15; 13 clean laps before it) |
 
 ## Going faster
 Lap time is bounded by the S-bend entry speed, not by the straights (the car reaches ~5 m/s

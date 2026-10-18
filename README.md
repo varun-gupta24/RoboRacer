@@ -20,13 +20,16 @@ QoS and message conventions as `teleop_keyboard.py`.
    perpendicular distance `D = b cos phi` and the lookahead projection `D_L = D + L sin phi`
    with `L = 0.6 m + 0.2 s · speed`. Error = `D_L(left) − D_L(right)`.
 2. **One-wall fallback.** If a side beam reads beyond 2.5 m the wall is treated as missing
-   and the car follows the other wall at the running estimate of half the track width.
+   and the car keeps the running estimate of half the track width from the other wall:
+   pushing away from it at full gain, pulling toward it at 0.3× (at a corner exit the
+   remaining wall is the one ahead, so pulling toward it is what put the car into it).
 3. **Steering.** PD on the error (`kp = 0.4 rad/m`, `kd = 0.02`), plus a small repulsion
    term when a front-diagonal cone (45° ± 20°) sees something closer than 0.7 m. The
    steering angle is divided by 0.52 rad (full lock) and clipped to [-1, 1].
-4. **Speed.** Target speed = 1.3 × front clearance (min range in a ±15° cone, low-pass
-   filtered), clipped to [1, 4] m/s and scaled by `1 − 0.5·|steer|`. Throttle is closed-loop
-   on the speed from `/odom`: `0.1·v_target + 0.8·(v_target − v)`.
+4. **Speed.** Constant-deceleration law: `v_target = sqrt(2·a·(front − 0.5 m − v·0.1 s))`
+   with `a = 3 m/s²` and `front` the min range in a ±15° cone (low-pass filtered), clipped to
+   [1, 4] m/s and scaled by `1 − 0.5·|steer|`. Throttle is closed-loop on the signed forward
+   speed from `/odom`, predicted 0.25 s ahead: `0.1·v_target + 0.8·(v_target − v_pred)`.
 5. **Safety.** Front clearance under 0.5 m brakes; a stall against a wall backs up for 1 s with
    opposite steering; losing scans for 0.5 s zeroes the throttle; Ctrl-C publishes zeros, then
    destroys the node and shuts rclpy down.
@@ -37,14 +40,17 @@ bridge's `lap_count`, `last_lap_time`, `best_lap_time` and `collision_count` top
 
 ## Results (practice track, GUI simulator, Apple-silicon Docker)
 
-| setting | laps in 130 s | best lap | collisions |
-|---|---|---|---|
-| defaults (`v_max 4.0`) | 8 | 14.4 s | 0 |
-| `v_max 3.5`, ±10° cone | 9 | 13.8 s | 1 (first corner after a moving reset) |
-| `v_max 5.0 v_per_m_front 1.5` | 5 in 65 s | 10.9 s | 1 |
+| setting | window | full laps | best lap | mean lap | collisions |
+|---|---|---|---|---|---|
+| defaults | 150 s | 10 | 12.8 s | 13.9 s | 0 |
+| defaults | 300 s | 21 | 12.5 s | 13.5 s | 1 (lap 15) |
+| `brake_accel 3`, no latency allowance | 2 × 130 s | 17 | 11.7 s | 12.4 s | 1 (first lap) |
+| linear speed law, `v_max 5` | 65 s | 5 | 10.9 s | 12.1 s | 1 |
 
-The defaults are the reliable setting; faster settings lap in 10–11 s but touch a wall every
-few laps at the S-bend. See `TUNING.md`.
+Faster settings lap in 10–11 s but touch a wall every few laps at the S-bend; the defaults are
+the setting that reliably strings clean laps together. For a guaranteed-clean run at the cost of
+~2 s per lap: `scripts/drive.sh --ros-args -p brake_accel:=2.0 -p v_max:=3.5`.
+See `TUNING.md` for the log.
 
 ## Run it
 

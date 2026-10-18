@@ -25,7 +25,9 @@ video from the simulator GUI.
    trial runner, telemetry monitor, recorder, offline replay, track map. Done.
 4. Tune in the GUI simulator (the headless one has bursty frame pacing): fix weaving
    (derivative term was acting as yaw-rate feedback), rescale for the 1.2–1.5 m track, then
-   raise speed until collisions appear and back off. Done — see `TUNING.md`.
+   raise speed until collisions appear and back off; replace the linear speed law with a
+   constant-deceleration one; fix the one-wall fallback and a reverse-runaway bug found in the
+   recordings. Done — see `TUNING.md`.
 5. Validate the defaults over long runs, document, push. Done.
 
 ## What was deliberately left out
