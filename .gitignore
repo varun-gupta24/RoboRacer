@@ -1,0 +1,19 @@
+# Ignore everything at the root by default
+/*
+# ...except what we submit
+!/autodrive_devkit/
+!/scripts/
+!/README.md
+!/PLAN.md
+!/TUNING.md
+!/.gitignore
+
+# Never commit build artifacts or junk
+build/
+install/
+log/
+__pycache__/
+*.pyc
+.DS_Store
+*.zip
+*.app
