@@ -1,229 +1,84 @@
-# AutoDRIVE-RoboRacer Sim-Racing
+# Penn RoboRacer Technical Challenge — LiDAR wall following
 
-![Github Stars](https://img.shields.io/github/stars/AutoDRIVE-Ecosystem/AutoDRIVE-RoboRacer-Sim-Racing?style=flat&color=blue&label=stars&logo=github&logoColor=white)
-![Github Forks](https://img.shields.io/github/forks/AutoDRIVE-Ecosystem/AutoDRIVE-RoboRacer-Sim-Racing?style=flat&color=blue&label=forks&logo=github&logoColor=white)
-![Github Downloads](https://img.shields.io/github/downloads/AutoDRIVE-Ecosystem/AutoDRIVE-RoboRacer-Sim-Racing/total?style=flat&color=blue&label=downloads&logo=github&logoColor=white)
-![Sim Docker Stars](https://img.shields.io/docker/stars/autodriveecosystem/autodrive_roboracer_sim?style=flat&color=blue&label=sim-stars&logo=docker&logoColor=white)
-![Sim Docker Pulls](https://img.shields.io/docker/pulls/autodriveecosystem/autodrive_roboracer_sim?style=flat&color=blue&label=sim-pulls&logo=docker&logoColor=white)
-![API Docker Stars](https://img.shields.io/docker/stars/autodriveecosystem/autodrive_roboracer_api?style=flat&color=blue&label=api-stars&logo=docker&logoColor=white)
-![API Docker Pulls](https://img.shields.io/docker/pulls/autodriveecosystem/autodrive_roboracer_api?style=flat&color=blue&label=api-pulls&logo=docker&logoColor=white)
+ROS 2 (Humble, Python) node that drives the AutoDRIVE RoboRacer around the practice
+track using only the 2D LiDAR. Goal: 3 consecutive laps with zero wall contact, then the
+best lap time.
 
-![AutoDRIVE-RoboRacer Sim-Racing](Banner.png)
+Submission package: `autodrive_devkit/` (unchanged AutoDRIVE devkit plus
+`autodrive_roboracer/wall_follow_node.py` and one `console_scripts` line in `setup.py`).
+`scripts/` holds the tooling used to run and tune it; `PLAN.md` and `TUNING.md` document the
+approach and the tuning log. AI assistance (Claude Code) was used for the whole build.
 
-RoboRacer Digital Twin Autonomous Sim-Racing League using AutoDRIVE Ecosystem
+## How it drives
 
-> [!NOTE]
-> - The setup has been only tested on the [Ubuntu](https://ubuntu.com) operating system.
-> - It is assumed that [Docker](https://docs.docker.com/engine/install) is installed.
-> - It is assumed that if the Docker container is to take advantage of an NVIDIA GPU, the host machine has been properly configured by installing the necessary NVIDIA GPU drivers and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/index.html).
+`wall_follow_node` subscribes to `/autodrive/roboracer_1/lidar` and publishes
+`throttle_command` / `steering_command` (`std_msgs/Float32`, both in [-1, 1]) with the same
+QoS and message conventions as `teleop_keyboard.py`.
 
-## AutoDRIVE Simulator Container
+1. **Two-wall centering.** For each side it samples beam *b* at ±90° and beam *a* 50° ahead of
+   it (median over ±2 beams), gets the wall angle `phi = atan2(a cos α − b, a sin α)`, the
+   perpendicular distance `D = b cos phi` and the lookahead projection `D_L = D + L sin phi`
+   with `L = 0.6 m + 0.2 s · speed`. Error = `D_L(left) − D_L(right)`.
+2. **One-wall fallback.** If a side beam reads beyond 2.5 m the wall is treated as missing
+   and the car follows the other wall at the running estimate of half the track width.
+3. **Steering.** PD on the error (`kp = 0.4 rad/m`, `kd = 0.02`), plus a small repulsion
+   term when a front-diagonal cone (45° ± 20°) sees something closer than 0.7 m. The
+   steering angle is divided by 0.52 rad (full lock) and clipped to [-1, 1].
+4. **Speed.** Target speed = 1.3 × front clearance (min range in a ±15° cone, low-pass
+   filtered), clipped to [1, 4] m/s and scaled by `1 − 0.5·|steer|`. Throttle is closed-loop
+   on the speed from `/odom`: `0.1·v_target + 0.8·(v_target − v)`.
+5. **Safety.** Front clearance under 0.5 m brakes; a stall against a wall backs up for 1 s with
+   opposite steering; losing scans for 0.5 s zeroes the throttle; Ctrl-C publishes zeros, then
+   destroys the node and shuts rclpy down.
 
-> [!NOTE]
-> The simulator executable must be placed inside [`/autodrive_simulator`](/autodrive_simulator) directory. This repository ships with an examplar working simulator executable, which can be updated as necessary.
+Every gain is a ROS parameter, changeable live:
+`ros2 param set /wall_follow_node v_max 4.5`. Lap and collision events are logged from the
+bridge's `lap_count`, `last_lap_time`, `best_lap_time` and `collision_count` topics.
 
-### Build:
+## Results (practice track, GUI simulator, Apple-silicon Docker)
 
-```bash
-docker build --tag autodriveecosystem/autodrive_roboracer_sim:<TAG> -f autodrive_simulator.Dockerfile .
-```
+| setting | laps in 130 s | best lap | collisions |
+|---|---|---|---|
+| defaults (`v_max 4.0`) | 8 | 14.4 s | 0 |
+| `v_max 3.5`, ±10° cone | 9 | 13.8 s | 1 (first corner after a moving reset) |
+| `v_max 5.0 v_per_m_front 1.5` | 5 in 65 s | 10.9 s | 1 |
 
-### Run:
+The defaults are the reliable setting; faster settings lap in 10–11 s but touch a wall every
+few laps at the S-bend. See `TUNING.md`.
 
-```bash
-xhost local:root
-docker run --name autodrive_roboracer_sim --rm -it --entrypoint /bin/bash --network=host --ipc=host -v /tmp/.X11-unix:/tmp/.X11-unix:rw --env DISPLAY --privileged --gpus all autodriveecosystem/autodrive_roboracer_sim:<TAG>
-```
+## Run it
 
-### Push:
-
-1. Run the image you created in the previous step inside a container:
-```bash
-xhost local:root
-docker run --name autodrive_roboracer_sim --rm -it --entrypoint /bin/bash --network=host --ipc=host -v /tmp/.X11-unix:/tmp/.X11-unix:rw --env DISPLAY --privileged --gpus all autodriveecosystem/autodrive_roboracer_sim:<TAG>
-```
-
-2. In a new terminal window, list all containers and make a note of the desired `CONTAINER ID`:
-```bash
-docker ps -a
-```
-
-3. Commit changes to Docker Hub:
-```bash
-docker commit -m "AutoDRIVE-RoboRacer-Sim-Racing" -a "AutoDRIVE Ecosystem" <CONTAINER ID> autodriveecosystem/autodrive_roboracer_sim:<TAG>
-```
-
-4. Login to Docker Hub:
-```bash
-docker login
-```
-
-5. Push the container to Docker Hub, once done, you should be able to see your repository on Docker Hub:
-```bash
-docker push autodriveecosystem/autodrive_roboracer_sim:<TAG>
-```
-
-## AutoDRIVE Devkit Container
-
-> [!NOTE]
-> The devkit package(s) must be placed inside [`/autodrive_devkit`](/autodrive_devkit) directory. This repository ships with an examplar working devkit package, which can be updated as necessary.
-
-### Build:
+Prerequisites: Docker Desktop, the AutoDRIVE practice simulator at
+`~/autodrive-sim/autodrive_simulator/AutoDRIVE Simulator.app`.
 
 ```bash
-docker build --tag autodriveecosystem/autodrive_roboracer_api:<TAG> -f autodrive_devkit.Dockerfile .
+scripts/run.sh            # builds the devkit image once, colcon-builds the package, runs the bridge on :4567
+scripts/sim.sh            # (another terminal) launches the simulator and clicks Connect
+scripts/drive.sh          # (another terminal) runs the wall follower
 ```
 
-### Run:
+`scripts/drive.sh --ros-args -p v_max:=3.5` overrides parameters at launch. Without the
+scripts: build the image from `autodrive_devkit.Dockerfile`, run it with `-p 4567:4567`,
+`ros2 launch autodrive_roboracer bringup_headless.launch.py`, connect the simulator, then
+`ros2 run autodrive_roboracer wall_follow_node`.
 
-```bash
-xhost local:root
-docker run --name autodrive_roboracer_api --rm -it --entrypoint /bin/bash --network=host --ipc=host -v /tmp/.X11-unix:/tmp/.X11-unix:rw --env DISPLAY --privileged --gpus all autodriveecosystem/autodrive_roboracer_api:<TAG>
-```
+Notes
+- Restarting the bridge while the simulator is connected puts the simulator into a
+  reconnect storm; restart the simulator too (`scripts/sim.sh` does that).
+- `scripts/sim.sh headless` runs the simulator with `-batchmode -nographics`; it auto-connects,
+  but its frame pacing is bursty (0.2–0.6 s scan gaps) and lap times and collisions there are
+  not representative. Tune in GUI mode.
 
-### Push:
+## Tuning tools (`scripts/`)
 
-1. Run the image you created in the previous step inside a container:
-```bash
-xhost local:root
-docker run --name autodrive_roboracer_api --rm -it --entrypoint /bin/bash --network=host --ipc=host -v /tmp/.X11-unix:/tmp/.X11-unix:rw --env DISPLAY --privileged --gpus all autodriveecosystem/autodrive_roboracer_api:<TAG>
-```
+| script | purpose |
+|---|---|
+| `dk.sh CMD` | run a command inside the devkit container with ROS sourced |
+| `trial.py T k=v ...` | set parameters, reset the sim, watch T seconds, print laps/collisions, append to `trials.csv` |
+| `monitor.py [period] [dur]` | live telemetry: speed, lap, collisions, commands, clearances |
+| `record.py T out.npz` | record scans, odom and commands |
+| `replay.py rec.npz i n [k=v]` | run the controller offline over a recording and print the steering terms |
+| `map.py rec.npz out.png` | draw the track from the recording with the trajectory and collisions |
 
-2. In a new terminal window, list all containers and make a note of the desired `CONTAINER ID`:
-```bash
-docker ps -a
-```
-
-3. Commit changes to Docker Hub:
-```bash
-docker commit -m "AutoDRIVE-RoboRacer-Sim-Racing" -a "AutoDRIVE Ecosystem" <CONTAINER ID> autodriveecosystem/autodrive_roboracer_api:<TAG>
-```
-
-4. Login to Docker Hub:
-```bash
-docker login
-```
-
-5. Push the container to Docker Hub, once done, you should be able to see your repository on Docker Hub:
-```bash
-docker push autodriveecosystem/autodrive_roboracer_api:<TAG>
-```
-
-## Competition Execution
-
-1. Pull the team's image:
-```bash
-docker pull <TEAM_USERNAME>/<IMAGE_NAME>:<TAG>
-```
-
-2. Run the team's image you pulled in the previous step inside a container:
-```bash
-xhost local:root
-docker run --name autodrive_roboracer_api --rm -it --entrypoint /bin/bash --network=host --ipc=host -v /tmp/.X11-unix:/tmp/.X11-unix:rw --env DISPLAY --privileged --gpus all <TEAM_USERNAME>/<IMAGE_NAME>:<TAG>
-```
-
-3. Run the simulator image inside a container, set graphics to `Ultra` quality and vehicle in `Autonomous` mode:
-```bash
-xhost local:root
-docker run --name autodrive_roboracer_sim --rm -it --entrypoint /bin/bash --network=host --ipc=host -v /tmp/.X11-unix:/tmp/.X11-unix:rw --env DISPLAY --privileged --gpus all autodriveecosystem/autodrive_roboracer_sim:<TAG>
-```
-
-4. Begin screen recording (tested with [OBS Studio](https://obsproject.com)).
-
-5. Execute a new bash session within the team's container, launch `rqtgraph` for inspection and start recording all data streams:
-```bash
-docker exec -it autodrive_roboracer_api bash
-ros2 bag record -a -o qualification.bag
-ros2 bag record -a -o competition.bag
-rqtgraph
-```
-
-6. Enable the communication bridge between simulator and devkit to start the race.
-
-7. After the race completion, kill the `rqtgraph`, data recording as well as screen recording processes, and copy the `rosgraph` and `rosbag` file to the host workstation:
-```bash
-docker cp autodrive_roboracer_api:/home/autodrive_devkit/qualification.bag /home/<USERNAME>
-docker cp autodrive_roboracer_api:/home/autodrive_devkit/competition.bag /home/<USERNAME>
-docker cp autodrive_roboracer_api:/home/autodrive_devkit/rosgraph.png /home/<USERNAME>
-```
-
-## Generally Helpful Docker Tips
-
-1. To access the container while it is running, execute the following command in a new terminal window to start a new bash session inside the container:
-```bash
-docker exec -it <CONTAINER NAME> bash
-```
-
-2. To exit the bash session(s), simply execute:
-```bash
-exit
-```
-
-3. To kill the container, execute the following command:
-```bash
-docker kill <CONTAINER NAME>
-```
-
-4. To remove the container, simply execute:
-```bash
-docker rm <CONTAINER NAME>
-```
-
-5. Running or caching multiple docker images, containers, volumes, and networks can quickly consume a lot of disk space. Hence, it is always a good idea to frequently check Docker disk utilization:
-```bash
-docker system df
-```
-
-6. To avoid utilizing a lot of disk space, it is a good idea to frequently purge docker resources such as images, containers, volumes, and networks that are unused or dangling (i.e. not tagged or associated with a container). There are several ways with many options to achieve this, please refer to appropriate documentation. The easiest way (but a potentially dangerous one) is to use a single command to clean up all the docker resources (dangling or otherwise):
-```bash
-docker system prune -a
-```
-
-7. After Docker Desktop is installed, Docker CLI commands are by default forwarded to Docker Desktop instead of Docker Engine, and hence you cannot connect to the Docker daemon without running Docker Desktop. In order to avoid this, just switch to the `default` Docker context:
-```bash
-docker context ls
-docker context use default
-```
-> [!NOTE]
-> It is not recommended to use Docker Desktop on the Linux operating system. This is because Docker Desktop creates a virtual machine based on Linux, which is first of all not needed for native (host) Linux OS, and secondly, it sometimes does not expose the necessary access ports for the containers (e.g., trouble with GPU access).
-
-## Citation
-
-We encourage you to read and cite the following papers if you use any part of the competition framework for your research:
-
-#### [AutoDRIVE: A Comprehensive, Flexible and Integrated Digital Twin Ecosystem for Enhancing Autonomous Driving Research and Education](https://arxiv.org/abs/2212.05241)
-```bibtex
-@article{AutoDRIVE-Ecosystem-2023,
-author = {Samak, Tanmay and Samak, Chinmay and Kandhasamy, Sivanathan and Krovi, Venkat and Xie, Ming},
-title = {AutoDRIVE: A Comprehensive, Flexible and Integrated Digital Twin Ecosystem for Autonomous Driving Research & Education},
-journal = {Robotics},
-volume = {12},
-year = {2023},
-number = {3},
-article-number = {77},
-url = {https://www.mdpi.com/2218-6581/12/3/77},
-issn = {2218-6581},
-doi = {10.3390/robotics12030077}
-}
-```
-This work has been published in **MDPI Robotics.** The open-access publication can be found on [MDPI](https://doi.org/10.3390/robotics12030077).
-
-#### [AutoDRIVE Simulator: A Simulator for Scaled Autonomous Vehicle Research and Education](https://arxiv.org/abs/2103.10030)
-```bibtex
-@inproceedings{AutoDRIVE-Simulator-2021,
-author = {Samak, Tanmay Vilas and Samak, Chinmay Vilas and Xie, Ming},
-title = {AutoDRIVE Simulator: A Simulator for Scaled Autonomous Vehicle Research and Education},
-year = {2021},
-isbn = {9781450390453},
-publisher = {Association for Computing Machinery},
-address = {New York, NY, USA},
-url = {https://doi.org/10.1145/3483845.3483846},
-doi = {10.1145/3483845.3483846},
-booktitle = {2021 2nd International Conference on Control, Robotics and Intelligent System},
-pages = {1–5},
-numpages = {5},
-location = {Qingdao, China},
-series = {CCRIS'21}
-}
-```
-This work has been published at **2021 International Conference on Control, Robotics and Intelligent System (CCRIS).** The publication can be found on [ACM Digital Library](https://dl.acm.org/doi/abs/10.1145/3483845.3483846).
+`autodrive_devkit/test/test_wall_follow.py` checks the wall geometry
+(`scripts/dk.sh python3 -m pytest src/autodrive_devkit/test/test_wall_follow.py`).

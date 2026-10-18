@@ -1,0 +1,29 @@
+2026-10-18 00:37:28,80,"",laps=4 best=19.69 mean=20.02 collisions=0 stalls=0 vmax=3.34 vmean=1.54
+2026-10-18 00:39:13,75,"v_max=5.0 v_per_m_front=1.5",laps=4 best=15.43 mean=16.34 collisions=4 stalls=0 vmax=4.37 vmean=1.97
+2026-10-18 00:40:30,75,"v_max=5.0 v_per_m_front=1.5 steer_slowdown=0.3",laps=4 best=14.53 mean=15.28 collisions=13 stalls=0 vmax=5.70 vmean=2.19
+2026-10-18 00:41:46,75,"v_max=6.0 v_per_m_front=2.0 steer_slowdown=0.3 throttle_kp=0.5",laps=4 best=11.74 mean=16.87 collisions=19 stalls=0 vmax=6.22 vmean=2.14
+2026-10-18 00:42:38,42,"v_max=5.0 v_per_m_front=1.5 steer_slowdown=0.5",laps=1 best=nan mean=nan collisions=6 stalls=0 vmax=4.06 vmean=1.58
+2026-10-18 00:46:31,70,"v_max=3.0",laps=3 best=17.52 mean=18.99 collisions=0 stalls=0 vmax=4.46 vmean=1.74
+2026-10-18 00:47:42,70,"v_max=5.0 v_per_m_front=1.5",laps=4 best=14.86 mean=15.23 collisions=10 stalls=0 vmax=5.50 vmean=2.21
+2026-10-18 00:48:03,3,"v_max=3.0 v_per_m_front=1.0",laps=0 best=nan mean=nan collisions=0 stalls=0 vmax=3.35 vmean=2.47
+2026-10-18 00:48:53,2,"",laps=0 best=nan mean=nan collisions=0 stalls=0 vmax=3.23 vmean=1.38
+2026-10-18 00:52:10,70,"v_max=3.0",laps=3 best=16.93 mean=27.37 collisions=7 stalls=0 vmax=5.08 vmean=1.90
+2026-10-18 00:53:21,70,"v_max=5.0 v_per_m_front=1.5",laps=4 best=14.75 mean=17.41 collisions=17 stalls=0 vmax=6.50 vmean=2.15
+2026-10-18 00:53:55,2,"v_max=3.0 v_per_m_front=1.0",laps=0 best=nan mean=nan collisions=1 stalls=0 vmax=4.17 vmean=1.90
+2026-10-18 01:04:37,70,"v_max=3.0 v_per_m_front=1.0",laps=4 best=14.37 mean=14.93 collisions=0 stalls=0 vmax=4.44 vmean=2.03
+2026-10-18 01:06:01,65,"v_max=4.0 v_per_m_front=1.5",laps=5 best=10.18 mean=11.28 collisions=4 stalls=0 vmax=5.43 vmean=2.63
+2026-10-18 01:07:08,65,"v_max=5.0 v_per_m_front=1.5 throttle_kp=0.4",laps=5 best=10.93 mean=12.08 collisions=1 stalls=0 vmax=5.77 vmean=2.67
+2026-10-18 01:08:17,65,"v_max=5.0 v_per_m_front=2.0 steer_slowdown=0.4 throttle_kp=0.4",laps=5 best=10.72 mean=12.32 collisions=10 stalls=0 vmax=5.96 vmean=2.81
+2026-10-18 01:09:24,65,"v_max=6.0 v_per_m_front=2.0 throttle_kp=0.4",laps=5 best=10.02 mean=11.08 collisions=8 stalls=0 vmax=6.57 vmean=2.75
+2026-10-18 01:09:35,2,"v_max=5.0 v_per_m_front=1.5 throttle_kp=0.4",laps=0 best=nan mean=nan collisions=0 stalls=0 vmax=5.45 vmean=4.50
+2026-10-18 01:14:06,65,"v_max=5.0 v_per_m_front=1.5 throttle_kp=0.4",laps=3 best=19.90 mean=22.77 collisions=13 stalls=0 vmax=6.85 vmean=1.86
+2026-10-18 01:15:13,65,"v_max=5.0 v_per_m_front=1.5 throttle_kp=0.4",laps=3 best=16.23 mean=18.57 collisions=12 stalls=0 vmax=5.28 vmean=1.92
+2026-10-18 01:18:23,120,"v_max=4.0 v_per_m_front=1.2 throttle_kp=0.4",laps=8 best=12.89 mean=14.75 collisions=2 stalls=0 vmax=5.28 vmean=2.15
+2026-10-18 01:20:25,120,"v_max=4.5 v_per_m_front=1.3 throttle_kp=0.4 steer_slowdown=0.6",laps=8 best=13.04 mean=14.07 collisions=3 stalls=0 vmax=5.54 vmean=2.22
+2026-10-18 01:20:49,2,"v_max=4.5 v_per_m_front=1.3 throttle_kp=0.4 steer_slowdown=0.6",laps=0 best=nan mean=nan collisions=0 stalls=0 vmax=4.71 vmean=3.20
+2026-10-18 01:26:30,130,"v_max=3.5 v_per_m_front=1.3 throttle_kp=0.8 front_cone_deg=10",laps=9 best=13.82 mean=14.42 collisions=1 stalls=0 vmax=4.86 vmean=2.15
+2026-10-18 01:28:42,130,"v_max=4.0 v_per_m_front=1.3 throttle_kp=0.8 front_cone_deg=15",laps=8 best=14.38 mean=15.48 collisions=0 stalls=0 vmax=5.01 vmean=2.02
+2026-10-18 01:29:35,16,"",laps=1 best=nan mean=nan collisions=0 stalls=0 vmax=4.56 vmean=2.37
+2026-10-18 01:29:53,16,"",laps=1 best=nan mean=nan collisions=1 stalls=0 vmax=4.50 vmean=1.85
+2026-10-18 01:30:10,16,"",laps=1 best=nan mean=nan collisions=0 stalls=0 vmax=4.52 vmean=2.19
+2026-10-18 01:30:28,16,"",laps=1 best=nan mean=nan collisions=0 stalls=0 vmax=4.38 vmean=2.12

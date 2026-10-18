@@ -17,3 +17,8 @@ __pycache__/
 .DS_Store
 *.zip
 *.app
+scripts/bridge.log
+# tuning artefacts
+scripts/*.log
+scripts/*.npz
+scripts/*.png
